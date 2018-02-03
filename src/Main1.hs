@@ -13,27 +13,29 @@ newtype AppState = AppState { routes :: [Route] }
 type AppStateT = State AppState
 
 -- client methods
+constructResponse :: String -> String -> String
+constructResponse req msg = unwords ["Request:", req, "\nResponse:", msg]
+
 routeHandler1 :: Request -> Response
-routeHandler1 request = "hello from route: " ++ request
+routeHandler1 request = constructResponse request "Hello from Route 1"
 
 routeHandler2 :: Request -> Response
-routeHandler2 request = "hello from route: " ++ request
+routeHandler2 request = constructResponse request "Hello from Route 2"
 
 defaultRoute :: Request -> Response
-defaultRoute request = "hello from the default route"
+defaultRoute request = constructResponse request "Hello from the DEFAULT route"
 
 myApp :: AppStateT ()
 myApp = do
   addRoute "one" routeHandler1
-  addRoute "two" routeHandler1
+  addRoute "two" routeHandler2
 
 main :: IO ()
 main = myServer myApp
 
 -- framework methods
 
-addRoute :: Monad m =>
-  String -> (String -> String) -> StateT AppState m ()
+addRoute :: String -> (String -> String) -> AppStateT ()
 addRoute pat mf = modify $ \s -> addRoute' (route pat mf) s
 
 addRoute' :: Route -> AppState -> AppState
@@ -48,20 +50,17 @@ route pat mw mw1 input_string =
   else
     tryNext
 
---runMyApp :: Application -> AppState -> Request ->
-runMyApp def app_state request = do
-  let output = foldl (flip ($)) def (routes app_state) request
-  return output
+runMyApp :: Application -> AppState -> Request -> Response
+runMyApp def app_state =
+  foldl (flip ($)) def (routes app_state)
 
 userInputLoop app_state = do
-  putStrLn "Please type in the request"
+  putStrLn "Awaiting requests..."
   request <- getLine
 
   unless (request == "q") $ do
     let response = runMyApp defaultRoute app_state request
-    case response of
-      Just x -> putStrLn x
-      Nothing -> putStrLn "Error"
+    putStrLn response
     userInputLoop app_state
 
 myServer :: AppStateT () -> IO ()
