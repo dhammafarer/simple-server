@@ -4,7 +4,7 @@ import Control.Monad.Trans.State.Strict
 import Control.Monad
 
 type Request = String
-type Response = String
+type Response = Maybe String
 type Application = Request -> Response
 
 type Route = Application -> Application
@@ -17,13 +17,13 @@ constructResponse :: String -> String -> String
 constructResponse req msg = unwords ["Request:", req, "\nResponse:", msg]
 
 routeHandler1 :: Request -> Response
-routeHandler1 request = constructResponse request "Hello from Route 1"
+routeHandler1 request = return $ constructResponse request "Hello from Route 1"
 
 routeHandler2 :: Request -> Response
-routeHandler2 request = constructResponse request "Hello from Route 2"
+routeHandler2 request = Nothing
 
 defaultRoute :: Request -> Response
-defaultRoute request = constructResponse request "Hello from the DEFAULT route"
+defaultRoute request = return $ constructResponse request "Hello from the DEFAULT route"
 
 myApp :: AppStateT ()
 myApp = do
@@ -35,13 +35,13 @@ main = myServer myApp
 
 -- framework methods
 
-addRoute :: String -> (String -> String) -> AppStateT ()
+addRoute :: String -> (Request -> Response) -> AppStateT ()
 addRoute pat mf = modify $ \s -> addRoute' (route pat mf) s
 
 addRoute' :: Route -> AppState -> AppState
 addRoute' mf s@AppState {routes = mw} = s {routes = mf:mw}
 
-route :: String -> (String -> String) -> Route
+route :: String -> (Request -> Response) -> Route
 route pat mw mw1 input_string =
   let tryNext = mw1 input_string in
   if pat == input_string
@@ -60,7 +60,9 @@ userInputLoop app_state = do
 
   unless (request == "q") $ do
     let response = runMyApp defaultRoute app_state request
-    putStrLn response
+    case response of
+      Just x -> putStrLn x
+      Nothing -> putStrLn "Error"
     userInputLoop app_state
 
 myServer :: AppStateT () -> IO ()
