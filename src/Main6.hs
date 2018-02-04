@@ -73,6 +73,7 @@ runAction action request = flip execStateT ""
                            $ runExceptT
                            $ action `catchError` errorHandler
 
+userInputLoop :: AppState -> IO ()
 userInputLoop app_state = do
   putStrLn "Awaiting requests..."
   request <- getLine

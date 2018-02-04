@@ -81,6 +81,7 @@ runAction action request = flip ST.execStateT ""
                            $ runAT
                            $ action `catchError` errorHandler
 
+userInputLoop :: AppState -> IO ()
 userInputLoop app_state = do
   putStrLn "Awaiting requests..."
   request <- getLine

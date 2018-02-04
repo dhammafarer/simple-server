@@ -67,6 +67,7 @@ runAction action request = either id id
                            $ flip runReader request
                            $ runExceptT action
 
+userInputLoop :: AppState -> IO ()
 userInputLoop app_state = do
   putStrLn "Awaiting requests..."
   request <- getLine

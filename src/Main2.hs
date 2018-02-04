@@ -54,6 +54,7 @@ runMyApp :: Application -> AppState -> Request -> Response
 runMyApp def app_state =
   foldl (flip ($)) def (routes app_state)
 
+userInputLoop :: AppState -> IO ()
 userInputLoop app_state = do
   putStrLn "Awaiting requests..."
   request <- getLine
