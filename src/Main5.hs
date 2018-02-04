@@ -2,8 +2,8 @@ module Main5 where
 
 import Control.Monad.Trans.State.Strict
 import Control.Monad.Trans.Class
-import Control.Monad.Trans.Reader
 import Control.Monad.Trans.Except
+import Control.Monad.Trans.Reader
 import Control.Monad
 import Control.Monad.Error.Class
 
@@ -11,7 +11,7 @@ type Request = String
 type Response = String
 
 type Application = Request -> Response
-type ActionT = ExceptT ActionError (Reader Request) Response
+type ActionT a = ExceptT ActionError (ReaderT Request (State Response)) a
 type ActionError = String
 
 type Route = Application -> Application
@@ -23,12 +23,12 @@ type AppStateT = State AppState
 constructResponse :: String -> String -> String
 constructResponse req msg = unwords ["Request:", req, "\nResponse:", msg]
 
-routeHandler1 :: ActionT
+routeHandler1 :: ActionT ()
 routeHandler1 = do
   request <- lift ask
-  return $ constructResponse request "Hello from Route 1"
+  lift . lift $ modify (const $ constructResponse request "Hello from Route 1")
 
-routeHandler2 :: ActionT
+routeHandler2 :: ActionT ()
 routeHandler2 = throwError "Error in Route 2"
 
 defaultRoute :: Application
@@ -43,13 +43,16 @@ main :: IO ()
 main = myServer myApp
 
 -- framework methods
-addRoute :: String -> ActionT -> AppStateT ()
+errorHandler :: ActionError -> ActionT ()
+errorHandler err = lift . lift $ modify (const $ "Oops: " ++ err)
+
+addRoute :: String -> ActionT () -> AppStateT ()
 addRoute pat mf = modify $ \s -> addRoute' (route pat mf) s
 
 addRoute' :: Route -> AppState -> AppState
 addRoute' mf s@AppState {routes = mw} = s {routes = mf:mw}
 
-route :: String -> ActionT -> Route
+route :: String -> ActionT () -> Route
 route pat mw mw1 input_string =
   let tryNext = mw1 input_string in
     if pat == input_string
@@ -62,10 +65,11 @@ runMyApp :: Application -> AppState -> Application
 runMyApp def app_state =
   foldl (flip ($)) def (routes app_state)
 
-runAction :: ActionT -> Request -> Response
-runAction action request = either id id
-                           $ flip runReader request
-                           $ runExceptT action
+runAction :: ActionT () -> Request -> Response
+runAction action request = flip execState ""
+                           $ flip runReaderT request
+                           $ runExceptT
+                           $ action `catchError` errorHandler
 
 userInputLoop app_state = do
   putStrLn "Awaiting requests..."
