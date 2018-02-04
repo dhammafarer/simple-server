@@ -1,24 +1,31 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Main7 where
 
-import Control.Monad.Trans.State.Strict
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
-import Control.Monad.Trans.Reader
+import qualified Control.Monad.Trans.Reader as RT
+import qualified Control.Monad.Trans.State.Strict as ST
 import Control.Monad.IO.Class
 import Control.Monad
 import Control.Monad.Error.Class
+import Control.Monad.State.Class
+import Control.Monad.Reader.Class
 
 type Request = String
 type Response = String
 
 type Application = Request -> IO Response
-type ActionT a = ExceptT ActionError (ReaderT Request (StateT Response IO)) a
+newtype ActionT a = ActionT { runAT :: ExceptT ActionError
+                                      (RT.ReaderT Request
+                                      (ST.StateT Response IO)) a }
+                            deriving (Functor, Applicative, Monad,
+                                      MonadIO, MonadReader Request,MonadState Response, MonadError ActionError)
 type ActionError = String
 
 type Route = Application -> Application
 
 newtype AppState = AppState { routes :: [Route] }
-type AppStateT = State AppState
+type AppStateT = ST.State AppState
 
 -- client methods
 constructResponse :: String -> String -> String
@@ -26,9 +33,9 @@ constructResponse req msg = unwords ["Request:", req, "\nResponse:", msg]
 
 routeHandler1 :: ActionT ()
 routeHandler1 = do
-  request <- lift ask
+  request <- ask
   liftIO $ putStrLn "We're doing IO"
-  lift . lift $ modify (const $ constructResponse request "Hello from Route 1")
+  modify (const $ constructResponse request "Hello from Route 1")
 
 routeHandler2 :: ActionT ()
 routeHandler2 = throwError "Error in Route 2"
@@ -46,7 +53,7 @@ main = myServer myApp
 
 -- framework methods
 errorHandler :: ActionError -> ActionT ()
-errorHandler err = lift . lift $ modify (const $ "Oops: " ++ err)
+errorHandler err = modify (const $ "Oops: " ++ err)
 
 addRoute :: String -> ActionT () -> AppStateT ()
 addRoute pat mf = modify $ \s -> addRoute' (route pat mf) s
@@ -68,9 +75,10 @@ runMyApp def app_state =
   foldl (flip ($)) def (routes app_state)
 
 runAction :: ActionT () -> Request -> IO Response
-runAction action request = flip execStateT ""
-                           $ flip runReaderT request
+runAction action request = flip ST.execStateT ""
+                           $ flip RT.runReaderT request
                            $ runExceptT
+                           $ runAT
                            $ action `catchError` errorHandler
 
 userInputLoop app_state = do
@@ -85,5 +93,5 @@ userInputLoop app_state = do
 
 myServer :: AppStateT () -> IO ()
 myServer myApp = do
-  let appState = execState myApp AppState{routes=[]}
+  let appState = ST.execState myApp AppState{routes=[]}
   userInputLoop appState
