@@ -35,22 +35,23 @@ main = myServer myApp
 
 -- framework methods
 
-addRoute :: String -> (String -> String) -> AppStateT ()
+addRoute :: String -> (Request -> Response) -> AppStateT ()
 addRoute pat mf = modify $ \s -> addRoute' (route pat mf) s
 
 addRoute' :: Route -> AppState -> AppState
 addRoute' mf s@AppState {routes = mw} = s {routes = mf:mw}
 
-route :: String -> (String -> String) -> Route
-route pat mw mw1 input_string =
-  let tryNext = mw1 input_string in
-  if pat == input_string
+route :: String -> (Request -> Response)
+      -> ((Request -> Response) -> (Request -> Response))
+route pat routehandler mw1 request =
+  let tryNext = mw1 request in
+  if pat == request
   then
-    mw input_string
+    routehandler request
   else
     tryNext
 
-runMyApp :: Application -> AppState -> Request -> Response
+runMyApp :: (Request -> Response) -> AppState -> Request -> Response
 runMyApp def app_state =
   foldl (flip ($)) def (routes app_state)
 
