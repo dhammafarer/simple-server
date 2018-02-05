@@ -7,28 +7,28 @@ type Request = String
 type Response = Maybe String
 type Application = Request -> Response
 
-type Route = Application -> Application
+type Middleware = Application -> Application
 
-newtype AppState = AppState { routes :: [Route] }
+newtype AppState = AppState { routes :: [Middleware] }
 type AppStateT = State AppState
 
 -- client methods
-constructResponse :: String -> String -> String
-constructResponse req msg = unwords ["Request:", req, "\nResponse:", msg]
+routeAction1 :: Request -> Response
+routeAction1 request = return $ mkResponse request "Hello from Route 1"
 
-routeHandler1 :: Request -> Response
-routeHandler1 request = return $ constructResponse request "Hello from Route 1"
-
-routeHandler2 :: Request -> Response
-routeHandler2 request = Nothing
+routeAction2 :: Request -> Response
+routeAction2 request = Nothing
 
 defaultRoute :: Request -> Response
-defaultRoute request = return $ constructResponse request "Hello from the DEFAULT route"
+defaultRoute request = return $ mkResponse request "Hello from the DEFAULT route"
+
+mkResponse :: String -> String -> String
+mkResponse req msg = unwords ["Request:", req, "\nResponse:", msg]
 
 myApp :: AppStateT ()
 myApp = do
-  addRoute "one" routeHandler1
-  addRoute "two" routeHandler2
+  addRoute "one" routeAction1
+  addRoute "two" routeAction2
 
 main :: IO ()
 main = myServer myApp
@@ -36,35 +36,35 @@ main = myServer myApp
 -- framework methods
 
 addRoute :: String -> (Request -> Response) -> AppStateT ()
-addRoute pat mf = modify $ \s -> addRoute' (route pat mf) s
+addRoute pat rA = modify $ \s -> addRoute' (route pat rA) s
 
-addRoute' :: Route -> AppState -> AppState
-addRoute' mf s@AppState {routes = mw} = s {routes = mf:mw}
+addRoute' :: Middleware -> AppState -> AppState
+addRoute' mw s@AppState {routes = rs} = s {routes = mw:rs}
 
-route :: String -> (Request -> Response) -> Route
-route pat mw mw1 input_string =
-  let tryNext = mw1 input_string in
-  if pat == input_string
+route :: String -> (Request -> Response) -> Middleware
+route pat routeAction nextApp request =
+  let tryNext = nextApp request in
+  if pat == request
   then
-    mw input_string
+    routeAction request
   else
     tryNext
 
-runMyApp :: Application -> AppState -> Request -> Response
-runMyApp def app_state =
-  foldl (flip ($)) def (routes app_state)
+runMyApp :: (Request -> Response) -> AppState -> Request -> Response
+runMyApp defHandler appState =
+  foldl (flip ($)) defHandler (routes appState)
 
 userInputLoop :: AppState -> IO ()
-userInputLoop app_state = do
+userInputLoop appState = do
   putStrLn "Awaiting requests..."
   request <- getLine
 
   unless (request == "q") $ do
-    let response = runMyApp defaultRoute app_state request
+    let response = runMyApp defaultRoute appState request
     case response of
       Just x -> putStrLn x
       Nothing -> putStrLn "Error"
-    userInputLoop app_state
+    userInputLoop appState
 
 myServer :: AppStateT () -> IO ()
 myServer myApp = do
