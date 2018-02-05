@@ -16,28 +16,37 @@ type Route = Application -> Application
 newtype AppState = AppState { routes :: [Route] }
 type AppStateT = State AppState
 
--- client methods
+-- Route Handlers -------------------------------
 constructResponse :: String -> String -> String
 constructResponse req msg = unwords ["Request:", req, "\nResponse:", msg]
 
 routeHandler1 :: Request -> ActionT
-routeHandler1 request = return $ constructResponse request "Hello from Route 1"
+routeHandler1 request = return $
+  constructResponse request "Hello from Route 1"
 
 routeHandler2 :: Request -> ActionT
 routeHandler2 request = throwError "Error in Route 2"
 
-defaultRoute :: Request -> Response
-defaultRoute request = constructResponse request "Hello from the DEFAULT route"
+notFound :: Request -> Response
+notFound request = constructResponse request "Hello from the DEFAULT route"
+-------------------------------------------------
 
+-- App State ------------------------------------
 myApp :: AppStateT ()
 myApp = do
   addRoute "one" routeHandler1
   addRoute "two" routeHandler2
 
+myServer :: AppStateT () -> IO ()
+myServer myApp = do
+  let appState = execState myApp AppState{routes=[]}
+  userInputLoop appState
+
 main :: IO ()
 main = myServer myApp
+-------------------------------------------------
 
--- framework methods
+-- Adding Routes --------------------------------
 addRoute :: String -> (Request -> ActionT) -> AppStateT ()
 addRoute pat mf = modify $ \s -> addRoute' (route pat mf) s
 
@@ -45,29 +54,27 @@ addRoute' :: Route -> AppState -> AppState
 addRoute' mf s@AppState {routes = mw} = s {routes = mf:mw}
 
 route :: String -> (Request -> ActionT) -> Route
-route pat action mw req =
+route pat rhandler mw req =
   let tryNext = mw req in
   if pat == req
   then
-    either ("Error: " ++ ) id (action req)
+    either ("Error: " ++ ) id (rhandler req)
   else
     tryNext
+-------------------------------------------------
 
+-- Running the App ------------------------------
 runMyApp :: Application -> AppState -> Application
-runMyApp def app_state =
-  foldl (flip ($)) def (routes app_state)
+runMyApp defHandler appState =
+  foldl (flip ($)) defHandler (routes appState)
 
 userInputLoop :: AppState -> IO ()
-userInputLoop app_state = do
+userInputLoop appState = do
   putStrLn "Awaiting requests..."
   request <- getLine
 
   unless (request == "q") $ do
-    let response = runMyApp defaultRoute app_state request
+    let response = runMyApp notFound appState request
     putStrLn response
-    userInputLoop app_state
-
-myServer :: AppStateT () -> IO ()
-myServer myApp = do
-  let appState = execState myApp AppState{routes=[]}
-  userInputLoop appState
+    userInputLoop appState
+-------------------------------------------------

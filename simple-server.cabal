@@ -5,17 +5,65 @@ version:             0.1.0.0
 homepage:            https://github.com/githubuser/simple-server#readme
 license:             BSD3
 license-file:        LICENSE
-author:              Author name here
-maintainer:          example@example.com
+author:              Pawel Lisewski
+maintainer:          pawel.lisewski@gmail.com
 copyright:           2018 Author name here
 category:            Web
 build-type:          Simple
 cabal-version:       >=1.10
 extra-source-files:  README.md
 
-executable simple-server
+executable main1
   hs-source-dirs:      src
-  main-is:             Main.hs
+  main-is:             Main1.hs
+  default-language:    Haskell2010
+  build-depends:       base >= 4.7 && < 5
+                     , transformers
+                     , mtl
+
+executable main2
+  hs-source-dirs:      src
+  main-is:             Main2.hs
+  default-language:    Haskell2010
+  build-depends:       base >= 4.7 && < 5
+                     , transformers
+                     , mtl
+
+executable main3
+  hs-source-dirs:      src
+  main-is:             Main3.hs
+  default-language:    Haskell2010
+  build-depends:       base >= 4.7 && < 5
+                     , transformers
+                     , mtl
+
+executable main4
+  hs-source-dirs:      src
+  main-is:             Main5.hs
+  default-language:    Haskell2010
+  build-depends:       base >= 4.7 && < 5
+                     , transformers
+                     , mtl
+
+executable main5
+  hs-source-dirs:      src
+  main-is:             Main5.hs
+  default-language:    Haskell2010
+  build-depends:       base >= 4.7 && < 5
+                     , transformers
+                     , mtl
+
+executable main6
+  hs-source-dirs:      src
+  main-is:             Main6.hs
+  default-language:    Haskell2010
+  build-depends:       base >= 4.7 && < 5
+                     , transformers
+                     , mtl
+
+executable main7
+  hs-source-dirs:      src
+  main-is:             Main7.hs
   default-language:    Haskell2010
   build-depends:       base >= 4.7 && < 5
                      , transformers
