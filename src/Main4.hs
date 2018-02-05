@@ -14,9 +14,9 @@ type Application = Request -> Response
 type ActionT = ExceptT ActionError (Reader Request) Response
 type ActionError = String
 
-type Route = Application -> Application
+type Middleware = Application -> Application
 
-newtype AppState = AppState { routes :: [Route] }
+newtype AppState = AppState { routes :: [Middleware] }
 type AppStateT = State AppState
 
 routeAction1 :: ActionT
@@ -45,10 +45,10 @@ main = myServer myApp
 addRoute :: String -> ActionT -> AppStateT ()
 addRoute pat action = modify $ \s -> addRoute' (route pat action) s
 
-addRoute' :: Route -> AppState -> AppState
+addRoute' :: Middleware -> AppState -> AppState
 addRoute' m s@AppState {routes = ms} = s {routes = m:ms}
 
-route :: String -> ActionT -> Route
+route :: String -> ActionT -> Middleware
 route pat action nextApp req =
   let tryNext = nextApp req in
     if pat == req

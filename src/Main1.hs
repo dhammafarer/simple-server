@@ -13,16 +13,16 @@ newtype AppState = AppState { routes :: [Middleware] }
 type AppStateT = State AppState
 
 routeAction1 :: Request -> Response
-routeAction1 request = mkResponse request "Hello from Route 1"
+routeAction1 request = textResponse request "Hello from Route 1"
 
 routeAction2 :: Request -> Response
-routeAction2 request = mkResponse request "Hello from Route 2"
+routeAction2 request = textResponse request "Hello from Route 2"
 
 notFound :: Request -> Response
-notFound request = mkResponse request "Hello from the DEFAULT route"
+notFound request = textResponse request "Hello from the DEFAULT route"
 
-mkResponse :: String -> String -> String
-mkResponse req msg = unwords ["Request:", req, "\nResponse:", msg]
+textResponse :: String -> String -> String
+textResponse req msg = unwords ["Request:", req, "\nResponse:", msg]
 
 myApp :: AppStateT ()
 myApp = do
@@ -33,17 +33,17 @@ main :: IO ()
 main = myServer myApp
 
 addRoute :: String -> (Request -> Response) -> AppStateT ()
-addRoute pat rA = modify $ \s -> addRoute' (route pat rA) s
+addRoute pat action = modify $ \s -> addRoute' (route pat action) s
 
 addRoute' :: Middleware -> AppState -> AppState
 addRoute' m s@AppState {routes = ms} = s {routes = m:ms}
 
 route :: String -> (Request -> Response) -> Middleware
-route pat routeAction nextApp req =
+route pat action nextApp req =
   let tryNext = nextApp req in
   if pat == req
   then
-    routeAction req
+    action req
   else
     tryNext
 
