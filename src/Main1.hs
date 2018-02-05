@@ -12,6 +12,7 @@ type Middleware = Application -> Application
 newtype AppState = AppState { routes :: [Middleware] }
 type AppStateT = State AppState
 
+-- Route Handlers ----------------------------------------------------
 routeAction1 :: Request -> Response
 routeAction1 request = textResponse request "Hello from Route 1"
 
@@ -23,15 +24,24 @@ notFound request = textResponse request "Hello from the DEFAULT route"
 
 textResponse :: String -> String -> String
 textResponse req msg = unwords ["Request:", req, "\nResponse:", msg]
+----------------------------------------------------------------------
 
+-- App State ---------------------------------------------------------
 myApp :: AppStateT ()
 myApp = do
   addRoute "one" routeAction1
   addRoute "two" routeAction2
 
+myServer :: AppStateT () -> IO ()
+myServer myApp = do
+  let appState = execState myApp AppState{routes=[]}
+  userInputLoop appState
+
 main :: IO ()
 main = myServer myApp
+----------------------------------------------------------------------
 
+-- Adding Routes -----------------------------------------------------
 addRoute :: String -> (Request -> Response) -> AppStateT ()
 addRoute pat action = modify $ \s -> addRoute' (route pat action) s
 
@@ -46,7 +56,9 @@ route pat action nextApp req =
     action req
   else
     tryNext
+----------------------------------------------------------------------
 
+-- Running the App ---------------------------------------------------
 runMyApp :: (Request -> Response) -> AppState -> Request -> Response
 runMyApp defHandler appState =
   foldl (flip ($)) defHandler (routes appState)
@@ -60,8 +72,4 @@ userInputLoop appState = do
     let response = runMyApp notFound appState request
     putStrLn response
     userInputLoop appState
-
-myServer :: AppStateT () -> IO ()
-myServer myApp = do
-  let appState = execState myApp AppState{routes=[]}
-  userInputLoop appState
+----------------------------------------------------------------------
