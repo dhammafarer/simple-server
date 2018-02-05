@@ -15,6 +15,8 @@ type Request = String
 type Response = String
 
 type Application = Request -> IO Response
+type Middleware = Application -> Application
+
 newtype ActionT a = ActionT { runAT :: ExceptT ActionError
                                       (RT.ReaderT Request
                                       (ST.StateT Response IO)) a }
@@ -22,12 +24,10 @@ newtype ActionT a = ActionT { runAT :: ExceptT ActionError
                                       MonadIO, MonadReader Request,MonadState Response, MonadError ActionError)
 type ActionError = String
 
-type Route = Application -> Application
-
-newtype AppState = AppState { routes :: [Route] }
+newtype AppState = AppState { routes :: [Middleware] }
 type AppStateT = ST.State AppState
 
--- client methods
+-- Route Handlers ----------------------------------------------------
 routeAction1 :: ActionT ()
 routeAction1 = do
   request <- ask
@@ -42,23 +42,31 @@ notFound request = return "Hello from the DEFAULT route"
 
 textResponse :: String -> String -> String
 textResponse req msg = unwords ["Request:", req, "\nResponse:", msg]
+----------------------------------------------------------------------
 
+-- App State ---------------------------------------------------------
 myApp :: AppStateT ()
 myApp = do
   addRoute "one" routeAction1
   addRoute "two" routeAction2
 
+myServer :: AppStateT () -> IO ()
+myServer myApp = do
+  let appState = ST.execState myApp AppState{routes=[]}
+  userInputLoop appState
+
 main :: IO ()
 main = myServer myApp
+----------------------------------------------------------------------
 
--- framework methods
+-- Adding Routes -----------------------------------------------------
 addRoute :: String -> ActionT () -> AppStateT ()
 addRoute pat action = modify $ \s -> addRoute' (route pat action) s
 
-addRoute' :: Route -> AppState -> AppState
+addRoute' :: Middleware -> AppState -> AppState
 addRoute' m s@AppState {routes = ms} = s {routes = m:ms}
 
-route :: String -> ActionT () -> Route
+route :: String -> ActionT () -> Middleware
 route pat action nextApp req =
   let tryNext = nextApp req in
     if pat == req
@@ -66,11 +74,9 @@ route pat action nextApp req =
         runAction action req
       else
         tryNext
+----------------------------------------------------------------------
 
-runMyApp :: Application -> AppState -> Application
-runMyApp defHandler appState =
-  foldl (flip ($)) defHandler (routes appState)
-
+-- Running Actions ---------------------------------------------------
 runAction :: ActionT () -> Request -> IO Response
 runAction action request = do
   (a,s) <- flip ST.runStateT ""
@@ -82,6 +88,12 @@ runAction action request = do
 
 errorHandler :: ActionError -> ActionT ()
 errorHandler err = modify (const $ "Oops: " ++ err)
+----------------------------------------------------------------------
+
+-- Running the App ---------------------------------------------------
+runMyApp :: Application -> AppState -> Application
+runMyApp defHandler appState =
+  foldl (flip ($)) defHandler (routes appState)
 
 userInputLoop :: AppState -> IO ()
 userInputLoop appState = do
@@ -93,8 +105,4 @@ userInputLoop appState = do
     response >>= putStrLn
     putStrLn "---"
     userInputLoop appState
-
-myServer :: AppStateT () -> IO ()
-myServer myApp = do
-  let appState = ST.execState myApp AppState{routes=[]}
-  userInputLoop appState
+----------------------------------------------------------------------

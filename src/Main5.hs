@@ -11,15 +11,15 @@ type Request = String
 type Response = String
 
 type Application = Request -> Response
+type Middleware = Application -> Application
+
 type ActionT a = ExceptT ActionError (ReaderT Request (State Response)) a
 type ActionError = String
-
-type Middleware = Application -> Application
 
 newtype AppState = AppState { routes :: [Middleware] }
 type AppStateT = State AppState
 
--- client methods
+-- Route Handlers ----------------------------------------------------
 routeAction1 :: ActionT ()
 routeAction1 = do
   request <- lift ask
@@ -33,16 +33,24 @@ notFound request = "Hello from the DEFAULT route"
 
 textResponse :: String -> String -> String
 textResponse req msg = unwords ["Request:", req, "\nResponse:", msg]
+----------------------------------------------------------------------
 
+-- App State ---------------------------------------------------------
 myApp :: AppStateT ()
 myApp = do
   addRoute "one" routeAction1
   addRoute "two" routeAction2
 
+myServer :: AppStateT () -> IO ()
+myServer myApp = do
+  let appState = execState myApp AppState{routes=[]}
+  userInputLoop appState
+
 main :: IO ()
 main = myServer myApp
+----------------------------------------------------------------------
 
--- framework methods
+-- Adding Routes -----------------------------------------------------
 addRoute :: String -> ActionT () -> AppStateT ()
 addRoute pat action = modify $ \s -> addRoute' (route pat action) s
 
@@ -57,11 +65,9 @@ route pat action nextApp req =
         runAction action req
       else
         tryNext
+----------------------------------------------------------------------
 
-runMyApp :: Application -> AppState -> Application
-runMyApp defHandler appState =
-  foldl (flip ($)) defHandler (routes appState)
-
+-- Running Actions ---------------------------------------------------
 runAction :: ActionT () -> Request -> Response
 runAction action request = flip execState ""
                            $ flip runReaderT request
@@ -70,6 +76,12 @@ runAction action request = flip execState ""
 
 errorHandler :: ActionError -> ActionT ()
 errorHandler err = lift . lift $ modify (const $ "Oops: " ++ err)
+----------------------------------------------------------------------
+
+-- Running the App ---------------------------------------------------
+runMyApp :: Application -> AppState -> Application
+runMyApp defHandler appState =
+  foldl (flip ($)) defHandler (routes appState)
 
 userInputLoop :: AppState -> IO ()
 userInputLoop appState = do
@@ -81,8 +93,4 @@ userInputLoop appState = do
     putStrLn response
     putStrLn "---"
     userInputLoop appState
-
-myServer :: AppStateT () -> IO ()
-myServer myApp = do
-  let appState = execState myApp AppState{routes=[]}
-  userInputLoop appState
+----------------------------------------------------------------------

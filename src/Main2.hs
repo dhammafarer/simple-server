@@ -5,14 +5,14 @@ import Control.Monad
 
 type Request = String
 type Response = Maybe String
-type Application = Request -> Response
 
+type Application = Request -> Response
 type Middleware = Application -> Application
 
 newtype AppState = AppState { routes :: [Middleware] }
 type AppStateT = State AppState
 
--- client methods
+-- Route Handlers ----------------------------------------------------
 routeAction1 :: Request -> Response
 routeAction1 request = return $ textResponse request "Hello from Route 1"
 
@@ -24,17 +24,24 @@ defaultRoute request = return $ textResponse request "Hello from the DEFAULT rou
 
 textResponse :: String -> String -> String
 textResponse req msg = unwords ["Request:", req, "\nResponse:", msg]
+----------------------------------------------------------------------
 
+-- App State ---------------------------------------------------------
 myApp :: AppStateT ()
 myApp = do
   addRoute "one" routeAction1
   addRoute "two" routeAction2
 
+myServer :: AppStateT () -> IO ()
+myServer myApp = do
+  let appState = execState myApp AppState{routes=[]}
+  userInputLoop appState
+
 main :: IO ()
 main = myServer myApp
+----------------------------------------------------------------------
 
--- framework methods
-
+-- Adding Routes -----------------------------------------------------
 addRoute :: String -> (Request -> Response) -> AppStateT ()
 addRoute pat action = modify $ \s -> addRoute' (route pat action) s
 
@@ -49,7 +56,9 @@ route pat action nextApp req =
     action req
   else
     tryNext
+----------------------------------------------------------------------
 
+-- Running the App ---------------------------------------------------
 runMyApp :: (Request -> Response) -> AppState -> Request -> Response
 runMyApp defHandler appState =
   foldl (flip ($)) defHandler (routes appState)
@@ -65,8 +74,4 @@ userInputLoop appState = do
       Just x -> putStrLn x
       Nothing -> putStrLn "Error"
     userInputLoop appState
-
-myServer :: AppStateT () -> IO ()
-myServer myApp = do
-  let appState = execState myApp AppState{routes=[]}
-  userInputLoop appState
+----------------------------------------------------------------------
