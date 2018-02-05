@@ -11,31 +11,31 @@ type Application = Request -> Response
 type ActionT = Either ActionError Response
 type ActionError = String
 
-type Route = Application -> Application
+type Middleware = Application -> Application
 
-newtype AppState = AppState { routes :: [Route] }
+newtype AppState = AppState { routes :: [Middleware] }
 type AppStateT = State AppState
 
 -- Route Handlers -------------------------------
-constructResponse :: String -> String -> String
-constructResponse req msg = unwords ["Request:", req, "\nResponse:", msg]
+routeAction1 :: Request -> ActionT
+routeAction1 request = return $
+  makeResponse request "Hello from Route 1"
 
-routeHandler1 :: Request -> ActionT
-routeHandler1 request = return $
-  constructResponse request "Hello from Route 1"
-
-routeHandler2 :: Request -> ActionT
-routeHandler2 request = throwError "Error in Route 2"
+routeAction2 :: Request -> ActionT
+routeAction2 request = throwError "Error in Route 2"
 
 notFound :: Request -> Response
-notFound request = constructResponse request "Hello from the DEFAULT route"
+notFound request = makeResponse request "Hello from the DEFAULT route"
+
+makeResponse :: String -> String -> String
+makeResponse req msg = unwords ["Request:", req, "\nResponse:", msg]
 -------------------------------------------------
 
 -- App State ------------------------------------
 myApp :: AppStateT ()
 myApp = do
-  addRoute "one" routeHandler1
-  addRoute "two" routeHandler2
+  addRoute "one" routeAction1
+  addRoute "two" routeAction2
 
 myServer :: AppStateT () -> IO ()
 myServer myApp = do
@@ -48,17 +48,17 @@ main = myServer myApp
 
 -- Adding Routes --------------------------------
 addRoute :: String -> (Request -> ActionT) -> AppStateT ()
-addRoute pat mf = modify $ \s -> addRoute' (route pat mf) s
+addRoute pat rA = modify $ \s -> addRoute' (route pat rA) s
 
-addRoute' :: Route -> AppState -> AppState
-addRoute' mf s@AppState {routes = mw} = s {routes = mf:mw}
+addRoute' :: Middleware -> AppState -> AppState
+addRoute' m s@AppState {routes = ms} = s {routes = m:ms}
 
-route :: String -> (Request -> ActionT) -> Route
-route pat rhandler mw req =
-  let tryNext = mw req in
+route :: String -> (Request -> ActionT) -> Middleware
+route pat routeAction nextApp req =
+  let tryNext = nextApp req in
   if pat == req
   then
-    either ("Error: " ++ ) id (rhandler req)
+    either ("Error: " ++ ) id (routeAction req)
   else
     tryNext
 -------------------------------------------------

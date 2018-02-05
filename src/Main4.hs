@@ -19,64 +19,68 @@ type Route = Application -> Application
 newtype AppState = AppState { routes :: [Route] }
 type AppStateT = State AppState
 
--- client methods
-constructResponse :: String -> String -> String
-constructResponse req msg = unwords ["Request:", req, "\nResponse:", msg]
-
-routeHandler1 :: ActionT
-routeHandler1 = do
+routeAction1 :: ActionT
+routeAction1 = do
   request <- lift ask
-  return $ constructResponse request "Hello from Route 1"
+  return $ textResponse request "Hello from Route 1"
 
-routeHandler2 :: ActionT
-routeHandler2 = throwError "Error in Route 2"
+routeAction2 :: ActionT
+routeAction2 = throwError "Error in Route 2"
 
-defaultRoute :: Application
-defaultRoute request = "Hello from the DEFAULT route"
+notFound :: Application
+notFound request = "Hello from the DEFAULT route"
+
+textResponse :: String -> String -> String
+textResponse req msg = unwords ["Request:", req, "\nResponse:", msg]
 
 myApp :: AppStateT ()
 myApp = do
-  addRoute "one" routeHandler1
-  addRoute "two" routeHandler2
+  addRoute "one" routeAction1
+  addRoute "two" routeAction2
 
 main :: IO ()
 main = myServer myApp
 
 -- framework methods
 addRoute :: String -> ActionT -> AppStateT ()
-addRoute pat mf = modify $ \s -> addRoute' (route pat mf) s
+addRoute pat action = modify $ \s -> addRoute' (route pat action) s
 
 addRoute' :: Route -> AppState -> AppState
-addRoute' mf s@AppState {routes = mw} = s {routes = mf:mw}
+addRoute' m s@AppState {routes = ms} = s {routes = m:ms}
 
 route :: String -> ActionT -> Route
-route pat mw mw1 input_string =
-  let tryNext = mw1 input_string in
-    if pat == input_string
+route pat action nextApp req =
+  let tryNext = nextApp req in
+    if pat == req
       then
-        runAction mw input_string
+        runAction action req
       else
         tryNext
 
 runMyApp :: Application -> AppState -> Application
-runMyApp def app_state =
-  foldl (flip ($)) def (routes app_state)
+runMyApp defHandler appState =
+  foldl (flip ($)) defHandler (routes appState)
 
 runAction :: ActionT -> Request -> Response
-runAction action request = either id id
+runAction action request = either (const "Error") id
                            $ flip runReader request
-                           $ runExceptT action
+                           $ runExceptT
+                           $ action `catchError` errorHandler
+
+errorHandler :: ActionError -> ActionT
+errorHandler err = return $ "Oops: " ++ err
+
 
 userInputLoop :: AppState -> IO ()
-userInputLoop app_state = do
+userInputLoop appState = do
   putStrLn "Awaiting requests..."
   request <- getLine
 
   unless (request == "q") $ do
-    let response = runMyApp defaultRoute app_state request
+    let response = runMyApp notFound appState request
     putStrLn response
     putStrLn "---"
-    userInputLoop app_state
+    userInputLoop appState
 
 myServer :: AppStateT () -> IO ()
 myServer myApp = do

@@ -39,14 +39,14 @@ addRoute :: String -> (Request -> Response) -> AppStateT ()
 addRoute pat rA = modify $ \s -> addRoute' (route pat rA) s
 
 addRoute' :: Middleware -> AppState -> AppState
-addRoute' mw s@AppState {routes = rs} = s {routes = mw:rs}
+addRoute' m s@AppState {routes = ms} = s {routes = m:ms}
 
 route :: String -> (Request -> Response) -> Middleware
-route pat routeAction nextApp request =
-  let tryNext = nextApp request in
-  if pat == request
+route pat routeAction nextApp req =
+  let tryNext = nextApp req in
+  if pat == req
   then
-    routeAction request
+    routeAction req
   else
     tryNext
 
