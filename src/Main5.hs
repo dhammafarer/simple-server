@@ -4,16 +4,17 @@ import Control.Monad.Trans.State.Strict
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.Reader
+import Control.Monad.IO.Class
 import Control.Monad
 import Control.Monad.Error.Class
 
 type Request = String
 type Response = String
 
-type Application = Request -> Response
+type Application = Request -> IO Response
 type Middleware = Application -> Application
 
-type ActionT a = ExceptT ActionError (ReaderT Request (State Response)) a
+type ActionT a = ExceptT ActionError (ReaderT Request (StateT Response IO)) a
 type ActionError = String
 
 newtype AppState = AppState { routes :: [Middleware] }
@@ -23,13 +24,14 @@ type AppStateT = State AppState
 routeAction1 :: ActionT ()
 routeAction1 = do
   request <- lift ask
+  liftIO $ putStrLn "We're doing IO"
   lift . lift $ modify (const $ textResponse request "Hello from Route 1")
 
 routeAction2 :: ActionT ()
 routeAction2 = throwError "Error in Route 2"
 
 notFound :: Application
-notFound request = "Hello from the DEFAULT route"
+notFound request = return "Hello from the DEFAULT route"
 
 textResponse :: String -> String -> String
 textResponse req msg = unwords ["Request:", req, "\nResponse:", msg]
@@ -68,11 +70,13 @@ route pat action nextApp req =
 ----------------------------------------------------------------------
 
 -- Running Actions ---------------------------------------------------
-runAction :: ActionT () -> Request -> Response
-runAction action request = flip execState ""
-                           $ flip runReaderT request
-                           $ runExceptT
-                           $ action `catchError` errorHandler
+runAction :: ActionT () -> Request -> IO Response
+runAction action request = do
+  (a,s) <- flip runStateT ""
+           $ flip runReaderT request
+           $ runExceptT
+           $ action `catchError` errorHandler
+  return $ either (const "Error") (const s) a
 
 errorHandler :: ActionError -> ActionT ()
 errorHandler err = lift . lift $ modify (const $ "Oops: " ++ err)
@@ -90,7 +94,7 @@ userInputLoop appState = do
 
   unless (request == "q") $ do
     let response = runMyApp notFound appState request
-    putStrLn response
+    response >>= putStrLn
     putStrLn "---"
     userInputLoop appState
 ----------------------------------------------------------------------

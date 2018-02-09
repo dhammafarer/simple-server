@@ -1,12 +1,15 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Main6 where
 
-import Control.Monad.Trans.State.Strict
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
-import Control.Monad.Trans.Reader
+import qualified Control.Monad.Trans.Reader as RT
+import qualified Control.Monad.Trans.State.Strict as ST
 import Control.Monad.IO.Class
 import Control.Monad
 import Control.Monad.Error.Class
+import Control.Monad.State.Class
+import Control.Monad.Reader.Class
 
 type Request = String
 type Response = String
@@ -14,18 +17,22 @@ type Response = String
 type Application = Request -> IO Response
 type Middleware = Application -> Application
 
-type ActionT a = ExceptT ActionError (ReaderT Request (StateT Response IO)) a
+newtype ActionT a = ActionT { runAT :: ExceptT ActionError
+                                      (RT.ReaderT Request
+                                      (ST.StateT Response IO)) a }
+                            deriving (Functor, Applicative, Monad,
+                                      MonadIO, MonadReader Request,MonadState Response, MonadError ActionError)
 type ActionError = String
 
 newtype AppState = AppState { routes :: [Middleware] }
-type AppStateT = State AppState
+type AppStateT = ST.State AppState
 
 -- Route Handlers ----------------------------------------------------
 routeAction1 :: ActionT ()
 routeAction1 = do
-  request <- lift ask
+  request <- ask
   liftIO $ putStrLn "We're doing IO"
-  lift . lift $ modify (const $ textResponse request "Hello from Route 1")
+  modify (const $ textResponse request "Hello from Route 1")
 
 routeAction2 :: ActionT ()
 routeAction2 = throwError "Error in Route 2"
@@ -45,7 +52,7 @@ myApp = do
 
 myServer :: AppStateT () -> IO ()
 myServer myApp = do
-  let appState = execState myApp AppState{routes=[]}
+  let appState = ST.execState myApp AppState{routes=[]}
   userInputLoop appState
 
 main :: IO ()
@@ -72,14 +79,15 @@ route pat action nextApp req =
 -- Running Actions ---------------------------------------------------
 runAction :: ActionT () -> Request -> IO Response
 runAction action request = do
-  (a,s) <- flip runStateT ""
-           $ flip runReaderT request
+  (a,s) <- flip ST.runStateT ""
+           $ flip RT.runReaderT request
            $ runExceptT
+           $ runAT
            $ action `catchError` errorHandler
   return $ either (const "Error") (const s) a
 
 errorHandler :: ActionError -> ActionT ()
-errorHandler err = lift . lift $ modify (const $ "Oops: " ++ err)
+errorHandler err = modify (const $ "Oops: " ++ err)
 ----------------------------------------------------------------------
 
 -- Running the App ---------------------------------------------------

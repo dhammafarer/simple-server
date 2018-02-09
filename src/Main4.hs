@@ -2,8 +2,8 @@ module Main4 where
 
 import Control.Monad.Trans.State.Strict
 import Control.Monad.Trans.Class
-import Control.Monad.Trans.Reader
 import Control.Monad.Trans.Except
+import Control.Monad.Trans.Reader
 import Control.Monad
 import Control.Monad.Error.Class
 
@@ -13,19 +13,19 @@ type Response = String
 type Application = Request -> Response
 type Middleware = Application -> Application
 
-type ActionT = ExceptT ActionError (Reader Request) Response
+type ActionT a = ExceptT ActionError (ReaderT Request (State Response)) a
 type ActionError = String
 
 newtype AppState = AppState { routes :: [Middleware] }
 type AppStateT = State AppState
 
 -- Route Handlers ----------------------------------------------------
-routeAction1 :: ActionT
+routeAction1 :: ActionT ()
 routeAction1 = do
   request <- lift ask
-  return $ textResponse request "Hello from Route 1"
+  lift . lift $ modify (const $ textResponse request "Hello from Route 1")
 
-routeAction2 :: ActionT
+routeAction2 :: ActionT ()
 routeAction2 = throwError "Error in Route 2"
 
 notFound :: Application
@@ -51,13 +51,13 @@ main = myServer myApp
 ----------------------------------------------------------------------
 
 -- Adding Routes -----------------------------------------------------
-addRoute :: String -> ActionT -> AppStateT ()
+addRoute :: String -> ActionT () -> AppStateT ()
 addRoute pat action = modify $ \s -> addRoute' (route pat action) s
 
 addRoute' :: Middleware -> AppState -> AppState
 addRoute' m s@AppState {routes = ms} = s {routes = m:ms}
 
-route :: String -> ActionT -> Middleware
+route :: String -> ActionT () -> Middleware
 route pat action nextApp req =
   let tryNext = nextApp req in
     if pat == req
@@ -68,14 +68,14 @@ route pat action nextApp req =
 ----------------------------------------------------------------------
 
 -- Running Actions ---------------------------------------------------
-runAction :: ActionT -> Request -> Response
-runAction action request = either (const "Error") id
-                           $ flip runReader request
+runAction :: ActionT () -> Request -> Response
+runAction action request = flip execState ""
+                           $ flip runReaderT request
                            $ runExceptT
                            $ action `catchError` errorHandler
 
-errorHandler :: ActionError -> ActionT
-errorHandler err = return $ "Oops: " ++ err
+errorHandler :: ActionError -> ActionT ()
+errorHandler err = lift . lift $ modify (const $ "Oops: " ++ err)
 ----------------------------------------------------------------------
 
 -- Running the App ---------------------------------------------------
